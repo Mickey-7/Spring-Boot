@@ -1,0 +1,2 @@
+https://roytuts.com/bulk-update-using-spring-jpa-criteriaupdate/
+
