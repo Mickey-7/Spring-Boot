@@ -1,0 +1,1 @@
+https://www.websparrow.org/spring/spring-data-jpa-query-annotation-example
