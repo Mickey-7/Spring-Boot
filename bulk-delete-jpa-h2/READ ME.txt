@@ -1,0 +1,2 @@
+https://roytuts.com/bulk-delete-using-spring-jpa-criteriadelete/
+
