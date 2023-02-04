@@ -1,0 +1,63 @@
+reference : https://www.javainuse.com/spring/spring-boot-apache-kafka-hello-world
+
+dependencies : Spring Web, Spring for Apache Kafka
+
+-------------------------------------------------------------------------------------------
+Define the KafkaSender class to send message to the kafka topic named as java_in_use-topic.
+
+@Service
+public class KafkaSenderService {
+
+    @Autowired
+    private KafkaTemplate<String, String> kafkaTemplate;
+
+    String kafkaTopic = "javainuse-topic";
+
+    public void send(String message){
+        kafkaTemplate.send(kafkaTopic, message);
+    }
+}
+-------------------------------------------------------------------------------------------
+
+
+-------------------------------------------------------------------------------------------
+Define a Controller which will pass the message and trigger
+send message to the Kafka Topic using the KafkaSender class.
+
+@RestController
+@RequestMapping(value = "/java_in_use-kafka")
+public class ApacheKafkaWebController {
+
+    @Autowired
+    KafkaSenderService kafkaSenderService;
+
+    @GetMapping(value = "/producer")
+    public String producer(@RequestParam("message") String message){
+        kafkaSenderService.send(message);
+
+        return "Message sent to the Kafka Topic javainuse-topic Successfully";
+    }
+}
+-------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------
+open web browser : http://localhost:8080/java_in_use-kafka/producer?message=try
+Message sent to the Kafka Topic javainuse-topic Successfully
+C:\kafka_2.13-3.3.2>.\bin\windows\kafka-console-consumer.bat --bootstrap-server localhost:9092 --topic javainuse-topic --from-beginning
+try
+
+http://localhost:8080/java_in_use-kafka/producer?message=this%20is%20from%20spring%20boot
+Message sent to the Kafka Topic javainuse-topic Successfully
+C:\kafka_2.13-3.3.2>.\bin\windows\kafka-console-consumer.bat --bootstrap-server localhost:9092 --topic javainuse-topic --from-beginning
+try
+this is from spring boot
+-------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------
+
+
+
+
+

@@ -1,0 +1,383 @@
+refernce : https://howtodoinjava.com/kafka/multiple-consumers-example/
+
+-------------------------------------------------------------------------------------------------------
+->application.properties
+    server.port=9000
+    kafka.bootstrapAddress=localhost:9092
+
+    general.topic.name=javainuse-topic
+    general.topic.group.id=group_id
+
+    user.topic.name=employee
+    user.topic.group.id=group_id
+-------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------
+->model - User
+    public class User {
+    private long userId;
+    private String firstName;
+    private String lastName;
+
+    @Override
+    public String toString() {
+        return "User{" +
+                "userId=" + userId +
+                ", firstName='" + firstName + '\'' +
+                ", lastName='" + lastName + '\'' +
+                '}';
+    }
+
+    public User() {
+    }
+
+    public User(long userId, String firstName, String lastName) {
+        this.userId = userId;
+        this.firstName = firstName;
+        this.lastName = lastName;
+    }
+
+    public long getUserId() {
+        return userId;
+    }
+
+    public void setUserId(long userId) {
+        this.userId = userId;
+    }
+
+    public String getFirstName() {
+        return firstName;
+    }
+
+    public void setFirstName(String firstName) {
+        this.firstName = firstName;
+    }
+
+    public String getLastName() {
+        return lastName;
+    }
+
+    public void setLastName(String lastName) {
+        this.lastName = lastName;
+    }
+}
+-------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------
+->config - TopicConfig
+    Kafka Topics Configuration
+        We are creating two topics i.e. test-log and user-log.
+
+            javainuse-topic : is used for publishing simple string messages.
+            employee : is used for publishing serialized User object.
+    
+        Let’s note down a few crucial points.
+
+        Spring Kafka will automatically add topics for all beans of type NewTopic.
+        Using TopicBuilder, We can create new topics as well as refer to existing topics in Kafka.KafkaAdmin
+        Apart from topic name, we can specify the number of partitions and the number of replicas for the topic.
+        By default, it uses default values of the partition and the replication factor as 1.
+        If you are not using Spring boot then make sure to create KafkaAdmin bean as well. 
+        Spring boot, creates it for us.
+
+    @Configuration
+    public class TopicConfig {
+        @Value(value = "${kafka.bootstrapAddress}")
+        private String bootstrapAddress;
+        @Value(value = "${general.topic.name}")
+        private String topicName;
+        @Value(value = "${user.topic.name}")
+        private String userTopicName;
+
+        @Bean
+        public NewTopic generalTopic(){
+            return TopicBuilder
+                    .name(topicName)
+                    .partitions(1)
+                    .replicas(1)
+                    .build();
+        }
+        
+        @Bean
+        public NewTopic userTopic(){
+            return TopicBuilder
+                    .name(userTopicName)
+                    .partitions(1)
+                    .replicas(1)
+                    .build();
+        }
+
+        //If not using spring boot
+        @Bean
+        public KafkaAdmin kafkaAdmin() {
+            Map<String, Object> configs = new HashMap<>();
+            configs.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapAddress);
+            return new KafkaAdmin(configs);
+        }
+    }
+-------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------
+->config & service - KafkaConsumerConfig & KafkaConsumerService
+     Message Consumers Configuration
+        We are creating two consumers who will listen to two topics we created in the 3rd section (topic above).
+
+        The Kafka multiple consumer configuration involves the following classes:
+
+        DefaultKafkaConsumerFactory : 
+            is used to create new Consumer instances where all consumers share common configuration properties mentioned in this bean.
+        ConcurrentKafkaListenerContainerFactory : 
+            is used to build ConcurrentMessageListenerContainer. This factory is primarily for building containers for @KafkaListener annotated methods.
+        ConsumerConfig : 
+            holds the consumer configuration keys.
+        @KafkaListener : 
+            marks a method to be the target of a Kafka message listener on the specified topics.
+
+    @Configuration
+    public class KafkaConsumerConfig {
+        @Value(value = "${kafka.bootstrapAddress}")
+        private String bootstrapAddress;
+
+        @Value(value = "${general.topic.group.id}")
+        private String groupId;
+
+        @Value(value = "${user.topic.group.id}")
+        private String userGroupId;
+
+        //1) Consume string data from Kafka
+        @Bean
+        public ConsumerFactory<String,String> consumerFactory(){
+            Map<String,Object> props = new HashMap<>();
+            props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapAddress);
+            props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+            props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+            props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+            props.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
+            return new DefaultKafkaConsumerFactory<>(props);
+        }
+
+        @Bean
+        public ConcurrentKafkaListenerContainerFactory<String,String> kafkaListenerContainerFactory(){
+            ConcurrentKafkaListenerContainerFactory<String,String> factory = new ConcurrentKafkaListenerContainerFactory<>();
+            factory.setConsumerFactory(consumerFactory());
+            return factory;
+        }
+
+        //2) Consume user objects from kafka
+        @Bean
+        public ConsumerFactory<String, User> userConsumerFactory(){
+            Map<String,Object> props = new HashMap<>();
+            props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapAddress);
+            props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+            props.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
+            return new DefaultKafkaConsumerFactory<>(props,
+                    new StringDeserializer(),
+                    new JsonDeserializer<>(User.class)
+            );
+        }
+
+        @Bean
+        public ConcurrentKafkaListenerContainerFactory<String,User> userKafkaListenerContainerFactory(){
+            ConcurrentKafkaListenerContainerFactory<String,User> factory = new ConcurrentKafkaListenerContainerFactory<>();
+            factory.setConsumerFactory(userConsumerFactory());
+            return factory;
+        }
+    }
+
+
+    @Service
+    public class KafkaConsumerService {
+        private final Logger logger = LoggerFactory.getLogger(KafkaConsumerService.class);
+
+        @KafkaListener(topics = "${general.topic.name}", groupId = "${general.topic.group.id}")
+        public void consume(String message){
+            logger.info(String.format("message received -> %s",message));
+        }
+
+        @KafkaListener(
+                topics = "${user.topic.name}",
+                groupId = "${user.topic.group.id}",
+                containerFactory = "userKafkaListenerContainerFactory"
+        )
+        public void consume(User user){
+            logger.info(String.format("User received -> %s",user));
+        }
+
+
+    }
+-------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------
+-> config & service - 
+    Message Producers Configuration
+    We are creating two producers that will be producing and sending messages to two different topics we created in the 3rd section (topic configuration).
+
+    The Kafka multiple producers configuration involve following classes:
+
+    DefaultKafkaProducerFactory : is used to create singleton Producer instances for the provided config options.
+    KafkaTemplate : is used for executing send message operations in all supported ways.
+    ProducerConfig : holds the producer configuration keys.
+    ListenableFuture : is used to accept completion callbacks after sending messages.
+
+    @Configuration
+    public class KafkaProducerConfig {
+        @Value(value = "${kafka.bootstrapAddress}")
+        private String bootstrapAddress;
+
+        //1) Send string to kafka
+        @Bean
+        public ProducerFactory<String,String> producerFactory(){
+            Map<String, Object> props = new HashMap<>();
+            props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapAddress);
+            props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+            props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+            return new DefaultKafkaProducerFactory<>(props);
+        }
+
+        @Bean
+        public KafkaTemplate<String,String> kafkaTemplate(){
+            return new KafkaTemplate<>(producerFactory());
+        }
+
+        //2) Send User objects to kafka
+        @Bean
+        public ProducerFactory<String, User> userProducerFactory(){
+            Map<String,Object> configProps = new HashMap<>();
+            configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG,bootstrapAddress);
+            configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,StringSerializer.class);
+            configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+            return new DefaultKafkaProducerFactory<>(configProps);
+        }
+
+        @Bean
+        public KafkaTemplate<String,User> userKafkaTemplate(){
+            return new KafkaTemplate<>(userProducerFactory());
+        }
+    }
+
+    @Service
+    public class KafkaProducerService {
+        private static final Logger logger = LoggerFactory.getLogger(KafkaProducerService.class);
+
+        //1) General topic with string payload
+        @Value(value = "${general.topic.name}")
+        private String topicName;
+
+        @Autowired
+        private KafkaTemplate<String, String> kafkaTemplate;
+
+        //2) Topic with user object payload
+        @Value(value = "${user.topic.name}")
+        private String userTopicName;
+
+        @Autowired
+        private KafkaTemplate<String, User> userKafkaTemplate;
+
+        public void sendMessage(String message) {
+            CompletableFuture<SendResult<String, String>> future = kafkaTemplate.send(topicName, message);
+            future.handle((result, exception) -> {
+                if (exception != null) {
+                    logger.error("unable to send message : "+message);
+                } else {
+                    logger.info("sent message : "+message+" " +
+                            "with offset : "+result.getRecordMetadata().offset());
+                }
+                return null;
+            });
+        }
+
+        public  void saveCreateUserLog(User user){
+            CompletableFuture<SendResult<String,User>> future = userKafkaTemplate.send(userTopicName,user);
+            future.handle((result,exception) -> {
+            if (exception != null){
+                logger.error("user created : "+user);
+            }else {
+                logger.info("user created : "+user+"" +
+                        " with offset : "+result.getRecordMetadata().offset());
+            }
+
+                return null;
+            });
+        }
+    }
+-------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------
+->controller - KafkaProducerController
+    @RestController
+    @RequestMapping(value = "/kafka")
+    public class KafkaProducerController {
+        private final KafkaProducerService producerService;
+
+        @Autowired
+        public KafkaProducerController(KafkaProducerService producerService) {
+            this.producerService = producerService;
+        }
+
+        @PostMapping(value = "/publish")
+        public void sendMessageToKafkaTopic(@RequestParam("message") String message){
+            producerService.sendMessage(message);
+        }
+
+        @PostMapping(value = "/createUser")
+        public void sendMessageToKafkaTopic(
+                @RequestParam("userId") String userId,
+                @RequestParam("firstName") String firstName,
+                @RequestParam("lastName") String lastName) {
+
+            User user = new User();
+            user.setUserId(Long.parseLong(userId));
+            user.setFirstName(firstName);
+            user.setLastName(lastName);
+
+            producerService.saveCreateUserLog(user);
+        }
+    }
+-------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------
+->start zookeeper : 
+    open cmd the type : cd C:\kafka_2.13-3.3.2
+    .\bin\windows\zookeeper-server-start.bat .\config\zookeeper.properties
+
+->start kafka server
+    open cmd the type : cd C:\kafka_2.13-3.3.2
+    .\bin\windows\kafka-server-start.bat .\config\server.properties
+
+->reuse topic
+    create new topic
+        open cmd the type : cd C:\kafka_2.13-3.3.2
+        .\bin\windows\kafka-topics.bat --create --topic topic_name --bootstrap-server localhost:9092 --replication-factor 1 --partitions 1
+    reuse topic 
+        we will reuse employee & javainuse-topic so no need to open new cmd 
+-------------------------------------------------------------------------------------------------------
+
+
+-------------------------------------------------------------------------------------------------------
+->Postman
+    POST http://localhost:9000/kafka/publish?message=this is kafka SEND
+
+    output on IntelliJ IDE run console :
+        08:26:26.539 [http-nio-9000-exec-1] INFO  o.a.k.clients.producer.KafkaProducer - [Producer clientId=producer-1] Instantiated an idempotent producer.
+        08:26:26.553 [http-nio-9000-exec-1] INFO  o.a.kafka.common.utils.AppInfoParser - Kafka version: 3.3.2
+        08:26:26.554 [http-nio-9000-exec-1] INFO  o.a.kafka.common.utils.AppInfoParser - Kafka commitId: b66af662e61082cb
+        08:26:26.554 [http-nio-9000-exec-1] INFO  o.a.kafka.common.utils.AppInfoParser - Kafka startTimeMs: 1675038386553
+        08:26:26.561 [kafka-producer-network-thread | producer-1] INFO  org.apache.kafka.clients.Metadata - [Producer clientId=producer-1] Resetting the last seen epoch of partition javainuse-topic-0 to 0 since the associated topicId changed from null to G3kBdBneQVy08sI4OkBIRw
+        08:26:26.562 [kafka-producer-network-thread | producer-1] INFO  org.apache.kafka.clients.Metadata - [Producer clientId=producer-1] Cluster ID: Hj3eUexIS6qTmKwVchjqaQ
+        08:26:26.585 [kafka-producer-network-thread | producer-1] INFO  o.a.k.c.p.i.TransactionManager - [Producer clientId=producer-1] ProducerId set to 2000 with epoch 0
+        08:26:26.626 [kafka-producer-network-thread | producer-1] INFO  c.e.m.service.KafkaProducerService - sent message : this is kafka with offset : 14
+        08:26:26.632 [org.springframework.kafka.KafkaListenerEndpointContainer#0-0-C-1] INFO  c.e.m.service.KafkaConsumerService - message received -> this is kafka
+
+    POST http://localhost:9000/kafka/createUser?userId=7&&firstName="Vimal"&&lastName="Kumar" SEND
+
+    output on IntelliJ IDE run console :
+        08:40:01.917 [http-nio-9000-exec-4] INFO  o.a.k.clients.producer.KafkaProducer - [Producer clientId=producer-1] Instantiated an idempotent producer.
+        08:40:01.929 [http-nio-9000-exec-4] INFO  o.a.kafka.common.utils.AppInfoParser - Kafka version: 3.3.2
+        08:40:01.929 [http-nio-9000-exec-4] INFO  o.a.kafka.common.utils.AppInfoParser - Kafka commitId: b66af662e61082cb
+        08:40:01.929 [http-nio-9000-exec-4] INFO  o.a.kafka.common.utils.AppInfoParser - Kafka startTimeMs: 1675039201929
+        08:40:01.935 [kafka-producer-network-thread | producer-1] INFO  org.apache.kafka.clients.Metadata - [Producer clientId=producer-1] Resetting the last seen epoch of partition employee-0 to 0 since the associated topicId changed from null to HOuV2XdwQoafgTHvXjlJzA
+        08:40:01.935 [kafka-producer-network-thread | producer-1] INFO  org.apache.kafka.clients.Metadata - [Producer clientId=producer-1] Cluster ID: Hj3eUexIS6qTmKwVchjqaQ
+        08:40:01.935 [kafka-producer-network-thread | producer-1] INFO  o.a.k.c.p.i.TransactionManager - [Producer clientId=producer-1] ProducerId set to 2001 with epoch 0
+        08:40:01.973 [kafka-producer-network-thread | producer-1] INFO  c.e.m.service.KafkaProducerService - user created : User{userId=7, firstName='"Vimal"', lastName='"Kumar"'} with offset : 3
+        08:40:01.982 [org.springframework.kafka.KafkaListenerEndpointContainer#1-0-C-1] INFO  c.e.m.service.KafkaConsumerService - User received -> User{userId=7, firstName='"Vimal"', lastName='"Kumar"'}
+-------------------------------------------------------------------------------------------------------

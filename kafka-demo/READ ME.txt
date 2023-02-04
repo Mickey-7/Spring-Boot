@@ -1,0 +1,248 @@
+reference : https://howtodoinjava.com/kafka/spring-boot-with-kafka/
+
+---------------------------------------------------------------------------------------------------------------------------------
+->dependencies Spring Web & Kafka
+---------------------------------------------------------------------------------------------------------------------------------
+
+---------------------------------------------------------------------------------------------------------------------------------
+->application.yml - use application.yml instead of application.properties
+    To use a application.yml file instead of an application.properties file in a Spring Boot application, 
+    you will need to do the following:
+
+    1.) Rename the application.properties file to application.yml.
+
+    2.) Make sure that the application.yml file is located in the classpath of your application. 
+    The default location for this file is the src/main/resources directory.
+
+    3.) Spring Boot will automatically use the application.yml file instead of the application.properties file 
+    if it is present in the classpath.
+
+    application.yml 
+
+        server:
+            port: 9000
+
+        spring:
+            kafka:
+                consumer:
+                    bootstap-servers: localhost:9092
+                    group-id: group-id
+                    auto-offset-reset: earliest
+                    key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+                    value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+                producer:
+                    bootstap-servers: localhost:9092
+                    key-serializer: org.apache.kafka.common.serialization.StringSerializer
+                    value-serializer: org.apache.kafka.common.serialization.StringSerializer
+---------------------------------------------------------------------------------------------------------------------------------
+
+---------------------------------------------------------------------------------------------------------------------------------
+->constant = storage for topic name & id
+    public class AppConstants
+    {
+        public static final String TOPIC_NAME = "javainuse-topic";
+        public static final String GROUP_ID = "group_id";
+    }
+---------------------------------------------------------------------------------------------------------------------------------
+
+---------------------------------------------------------------------------------------------------------------------------------
+->services
+    Producer
+        import org.slf4j.Logger;
+        import org.slf4j.LoggerFactory;
+        import org.springframework.beans.factory.annotation.Autowired;
+        import org.springframework.kafka.core.KafkaTemplate; 
+        import org.springframework.stereotype.Service;
+        import com.howtodoinjava.kafka.demo.common.AppConstants;
+        
+        @Service
+        public class KafKaProducerService 
+        {
+            private static final Logger logger = 
+                    LoggerFactory.getLogger(KafKaProducerService.class);
+            
+            @Autowired
+            private KafkaTemplate<String, String> kafkaTemplate;
+        
+            public void sendMessage(String message) 
+            {
+                logger.info(String.format("Message sent -> %s", message));
+                this.kafkaTemplate.send(AppConstants.TOPIC_NAME, message);
+            }
+        }
+
+    Consumer
+        import org.slf4j.Logger;
+        import org.slf4j.LoggerFactory;
+        import org.springframework.kafka.annotation.KafkaListener;
+        import org.springframework.stereotype.Service;
+        import com.howtodoinjava.kafka.demo.common.AppConstants;
+        
+        @Service
+        public class KafKaConsumerService 
+        {
+            private final Logger logger = 
+                    LoggerFactory.getLogger(KafKaConsumerService.class);
+        
+            @KafkaListener(topics = AppConstants.TOPIC_NAME, 
+                    groupId = AppConstants.GROUP_ID)
+            public void consume(String message) 
+            {
+                logger.info(String.format("Message recieved -> %s", message));
+            }
+        }
+---------------------------------------------------------------------------------------------------------------------------------
+
+---------------------------------------------------------------------------------------------------------------------------------
+->controller
+    import org.springframework.beans.factory.annotation.Autowired;
+    import org.springframework.web.bind.annotation.PostMapping;
+    import org.springframework.web.bind.annotation.RequestMapping;
+    import org.springframework.web.bind.annotation.RequestParam;
+    import org.springframework.web.bind.annotation.RestController;
+    import com.howtodoinjava.kafka.demo.service.KafKaProducerService;
+
+    @RestController
+    @RequestMapping(value = "/kafka")
+    public class KafkaProducerController
+    {
+        private final KafKaProducerService producerService;
+
+        @Autowired
+        public KafkaProducerController(KafKaProducerService producerService)
+        {
+            this.producerService = producerService;
+        }
+
+        @PostMapping(value = "/publish")
+        public void sendMessageToKafkaTopic(@RequestParam("message") String message)
+        {
+            this.producerService.sendMessage(message);
+        }
+    }
+---------------------------------------------------------------------------------------------------------------------------------
+
+---------------------------------------------------------------------------------------------------------------------------------
+->start zookeeper - open cmd
+    cd C:\kafka_2.13-3.3.2
+    .\bin\windows\zookeeper-server-start.bat .\config\zookeeper.properties
+---------------------------------------------------------------------------------------------------------------------------------
+
+---------------------------------------------------------------------------------------------------------------------------------
+->start kafka server - open cmd
+    cd C:\kafka_2.13-3.3.2
+    .\bin\windows\kafka-server-start.bat .\config\server.properties
+---------------------------------------------------------------------------------------------------------------------------------
+
+---------------------------------------------------------------------------------------------------------------------------------
+->create or reuse a topic - make sure the topic is existing already and declare it on constant
+---------------------------------------------------------------------------------------------------------------------------------
+
+---------------------------------------------------------------------------------------------------------------------------------
+->postman to test
+    POST localhost:9000/kafka/publish?message=Mickey SEND
+
+    output on IntelliJ IDE run console :
+
+        2023-01-28T16:13:13.009+08:00  INFO 10656 --- [nio-9000-exec-2] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+        2023-01-28T16:13:13.009+08:00  INFO 10656 --- [nio-9000-exec-2] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+        2023-01-28T16:13:13.010+08:00  INFO 10656 --- [nio-9000-exec-2] o.s.web.servlet.DispatcherServlet        : Completed initialization in 1 ms
+        2023-01-28T16:13:13.047+08:00  INFO 10656 --- [nio-9000-exec-2] c.e.k.service.KafkaProducerService       : message sent -> Mickey
+        2023-01-28T16:13:13.054+08:00  INFO 10656 --- [nio-9000-exec-2] o.a.k.clients.producer.ProducerConfig    : ProducerConfig values: 
+            acks = -1
+            batch.size = 16384
+            bootstrap.servers = [localhost:9092]
+            buffer.memory = 33554432
+            client.dns.lookup = use_all_dns_ips
+            client.id = producer-1
+            compression.type = none
+            connections.max.idle.ms = 540000
+            delivery.timeout.ms = 120000
+            enable.idempotence = true
+            interceptor.classes = []
+            key.serializer = class org.apache.kafka.common.serialization.StringSerializer
+            linger.ms = 0
+            max.block.ms = 60000
+            max.in.flight.requests.per.connection = 5
+            max.request.size = 1048576
+            metadata.max.age.ms = 300000
+            metadata.max.idle.ms = 300000
+            metric.reporters = []
+            metrics.num.samples = 2
+            metrics.recording.level = INFO
+            metrics.sample.window.ms = 30000
+            partitioner.adaptive.partitioning.enable = true
+            partitioner.availability.timeout.ms = 0
+            partitioner.class = null
+            partitioner.ignore.keys = false
+            receive.buffer.bytes = 32768
+            reconnect.backoff.max.ms = 1000
+            reconnect.backoff.ms = 50
+            request.timeout.ms = 30000
+            retries = 2147483647
+            retry.backoff.ms = 100
+            sasl.client.callback.handler.class = null
+            sasl.jaas.config = null
+            sasl.kerberos.kinit.cmd = /usr/bin/kinit
+            sasl.kerberos.min.time.before.relogin = 60000
+            sasl.kerberos.service.name = null
+            sasl.kerberos.ticket.renew.jitter = 0.05
+            sasl.kerberos.ticket.renew.window.factor = 0.8
+            sasl.login.callback.handler.class = null
+            sasl.login.class = null
+            sasl.login.connect.timeout.ms = null
+            sasl.login.read.timeout.ms = null
+            sasl.login.refresh.buffer.seconds = 300
+            sasl.login.refresh.min.period.seconds = 60
+            sasl.login.refresh.window.factor = 0.8
+            sasl.login.refresh.window.jitter = 0.05
+            sasl.login.retry.backoff.max.ms = 10000
+            sasl.login.retry.backoff.ms = 100
+            sasl.mechanism = GSSAPI
+            sasl.oauthbearer.clock.skew.seconds = 30
+            sasl.oauthbearer.expected.audience = null
+            sasl.oauthbearer.expected.issuer = null
+            sasl.oauthbearer.jwks.endpoint.refresh.ms = 3600000
+            sasl.oauthbearer.jwks.endpoint.retry.backoff.max.ms = 10000
+            sasl.oauthbearer.jwks.endpoint.retry.backoff.ms = 100
+            sasl.oauthbearer.jwks.endpoint.url = null
+            sasl.oauthbearer.scope.claim.name = scope
+            sasl.oauthbearer.sub.claim.name = sub
+            sasl.oauthbearer.token.endpoint.url = null
+            security.protocol = PLAINTEXT
+            security.providers = null
+            send.buffer.bytes = 131072
+            socket.connection.setup.timeout.max.ms = 30000
+            socket.connection.setup.timeout.ms = 10000
+            ssl.cipher.suites = null
+            ssl.enabled.protocols = [TLSv1.2, TLSv1.3]
+            ssl.endpoint.identification.algorithm = https
+            ssl.engine.factory.class = null
+            ssl.key.password = null
+            ssl.keymanager.algorithm = SunX509
+            ssl.keystore.certificate.chain = null
+            ssl.keystore.key = null
+            ssl.keystore.location = null
+            ssl.keystore.password = null
+            ssl.keystore.type = JKS
+            ssl.protocol = TLSv1.3
+            ssl.provider = null
+            ssl.secure.random.implementation = null
+            ssl.trustmanager.algorithm = PKIX
+            ssl.truststore.certificates = null
+            ssl.truststore.location = null
+            ssl.truststore.password = null
+            ssl.truststore.type = JKS
+            transaction.timeout.ms = 60000
+            transactional.id = null
+            value.serializer = class org.apache.kafka.common.serialization.StringSerializer
+
+        2023-01-28T16:13:13.064+08:00  INFO 10656 --- [nio-9000-exec-2] o.a.k.clients.producer.KafkaProducer     : [Producer clientId=producer-1] Instantiated an idempotent producer.
+        2023-01-28T16:13:13.081+08:00  INFO 10656 --- [nio-9000-exec-2] o.a.kafka.common.utils.AppInfoParser     : Kafka version: 3.3.2
+        2023-01-28T16:13:13.081+08:00  INFO 10656 --- [nio-9000-exec-2] o.a.kafka.common.utils.AppInfoParser     : Kafka commitId: b66af662e61082cb
+        2023-01-28T16:13:13.081+08:00  INFO 10656 --- [nio-9000-exec-2] o.a.kafka.common.utils.AppInfoParser     : Kafka startTimeMs: 1674893593081
+        2023-01-28T16:13:13.088+08:00  INFO 10656 --- [ad | producer-1] org.apache.kafka.clients.Metadata        : [Producer clientId=producer-1] Resetting the last seen epoch of partition javainuse-topic-0 to 0 since the associated topicId changed from null to G3kBdBneQVy08sI4OkBIRw
+        2023-01-28T16:13:13.088+08:00  INFO 10656 --- [ad | producer-1] org.apache.kafka.clients.Metadata        : [Producer clientId=producer-1] Cluster ID: Hj3eUexIS6qTmKwVchjqaQ
+        2023-01-28T16:13:13.115+08:00  INFO 10656 --- [ad | producer-1] o.a.k.c.p.internals.TransactionManager   : [Producer clientId=producer-1] ProducerId set to 1000 with epoch 0
+        2023-01-28T16:13:13.145+08:00  INFO 10656 --- [ntainer#0-0-C-1] c.e.k.service.KafkaConsumerService       : message received -> Mickey
+---------------------------------------------------------------------------------------------------------------------------------
